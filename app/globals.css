@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* Tema claro fixo. Não seguimos o modo escuro do sistema operacional:
+   o navegador não deve escurecer a página nem os controles de formulário.
+   (Sem modo escuro por enquanto; pode ser adicionado depois como opção.) */
+:root {
+  color-scheme: light;
+  --background: #fafafa;
+  --foreground: #18181b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html,
+body {
+  background-color: #fafafa;
+  color: #18181b;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}

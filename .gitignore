@@ -1,0 +1,65 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+
+# next.js
+/.next/
+/out/
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files: segredos (token do Apify, dados pessoais). O .env.example continua versionado.
+.env
+.env*.local
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# lead_ouro: dados de prospecção (leads reais, nunca versionar)
+/data/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.csv
+*.xlsx
+*.xls
+
+# logs podem conter nomes e telefones de leads
+*.log
+logs/
+
+# configurações pessoais do Claude Code (não o compartilhado)
+.claude/settings.local.json
+.claude/worktrees/
+
+# arquivos temporários de teste e cópias de segurança
+scratchpad/
+*.bak
