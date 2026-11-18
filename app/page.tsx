@@ -33,7 +33,7 @@ export default async function LeadsPage({ searchParams }: { searchParams: SP }) 
     city: sp.city || undefined,
     q: sp.q || undefined,
   };
-  const leads = listLeads(filters);
+  const leads = await listLeads(filters);
 
   return (
     <div className="space-y-4">
@@ -54,8 +54,8 @@ export default async function LeadsPage({ searchParams }: { searchParams: SP }) 
         }}
         statuses={LEAD_STATUSES}
         websiteTypes={(Object.keys(WEBSITE_LABELS) as WebsiteType[]).map((t) => ({ value: t, label: WEBSITE_LABELS[t] }))}
-        categories={listDistinct('category')}
-        cities={listDistinct('city')}
+        categories={await listDistinct('category')}
+        cities={await listDistinct('city')}
       />
 
       {leads.length === 0 ? (

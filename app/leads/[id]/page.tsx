@@ -19,7 +19,7 @@ const WEBSITE_HINTS: Record<string, string> = {
 
 export default async function LeadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const lead = getLead(Number(id));
+  const lead = await getLead(Number(id));
   if (!lead) notFound();
 
   const outreach = buildLeadOutreach(lead);

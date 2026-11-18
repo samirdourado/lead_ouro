@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { Suspense } from "react";
+import SessionLogout from "@/components/session-logout";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -32,6 +34,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
             <a href="/" className="font-semibold text-amber-600">Lead Ouro</a>
             <a href="/" className="hover:underline">Leads</a>
             <a href="/search" className="hover:underline">Buscar</a>
+            <Suspense fallback={null}>
+              <SessionLogout />
+            </Suspense>
           </nav>
         </header>
         <main className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">{children}</main>
