@@ -7,7 +7,7 @@ type Ctx = { params: Promise<{ id: string }> };
 // Não envia nada: o envio é feito manualmente no WhatsApp.
 export async function POST(request: Request, { params }: Ctx) {
   const id = Number((await params).id);
-  const lead = Number.isInteger(id) ? getLead(id) : null;
+  const lead = Number.isInteger(id) ? await getLead(id) : null;
   if (!lead) {
     return NextResponse.json({ error: 'Lead não encontrado.' }, { status: 404 });
   }
@@ -27,6 +27,6 @@ export async function POST(request: Request, { params }: Ctx) {
     return NextResponse.json({ error: 'Este lead não tem celular válido para WhatsApp.' }, { status: 400 });
   }
 
-  registerContact(lead.id, body.action, outreach.templateId);
+  await registerContact(lead.id, body.action, outreach.templateId);
   return NextResponse.json({ ok: true });
 }

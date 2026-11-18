@@ -5,7 +5,7 @@ type Ctx = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: Request, { params }: Ctx) {
   const id = Number((await params).id);
-  if (!Number.isInteger(id) || !getLead(id)) {
+  if (!Number.isInteger(id) || !(await getLead(id))) {
     return NextResponse.json({ error: 'Lead não encontrado.' }, { status: 404 });
   }
 
@@ -17,7 +17,7 @@ export async function PATCH(request: Request, { params }: Ctx) {
   }
 
   try {
-    if (typeof body.status === 'string') setLeadStatus(id, body.status);
+    if (typeof body.status === 'string') await setLeadStatus(id, body.status);
     if (body.message !== undefined) {
       if (body.message !== null && typeof body.message !== 'string') {
         return NextResponse.json({ error: 'Mensagem inválida.' }, { status: 400 });
@@ -25,9 +25,9 @@ export async function PATCH(request: Request, { params }: Ctx) {
       if (typeof body.message === 'string' && body.message.length > 2000) {
         return NextResponse.json({ error: 'A mensagem passou de 2000 caracteres.' }, { status: 400 });
       }
-      setLeadMessage(id, body.message as string | null);
+      await setLeadMessage(id, body.message as string | null);
     }
-    return NextResponse.json({ lead: getLead(id) });
+    return NextResponse.json({ lead: await getLead(id) });
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro ao atualizar.';
     return NextResponse.json({ error: message }, { status: 400 });

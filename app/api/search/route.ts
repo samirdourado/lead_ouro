@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   try {
     const provider = new ApifyPlaceSearch(process.env.APIFY_TOKEN ?? '');
     const places = await provider.search({ category, location, limit });
-    const result = ingestSearch({ category, location, limit }, places);
+    const result = await ingestSearch({ category, location, limit }, places);
     return NextResponse.json(result);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erro inesperado na busca.';

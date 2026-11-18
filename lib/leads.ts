@@ -44,7 +44,7 @@ export interface IngestResult {
   updated: number;
 }
 
-// Linha crua do SQLite (nomes de coluna em snake_case).
+// Linha crua do banco (nomes de coluna em snake_case).
 interface DbLead {
   id: number;
   place_id: string;
@@ -71,7 +71,7 @@ interface DbLead {
 
 function toLead(r: DbLead): LeadRow {
   return {
-    id: r.id,
+    id: Number(r.id),
     placeId: r.place_id,
     name: r.name,
     category: r.category,
@@ -81,13 +81,13 @@ function toLead(r: DbLead): LeadRow {
     city: r.city,
     phoneRaw: r.phone_raw,
     phoneWa: r.phone_wa,
-    phoneIsMobile: r.phone_is_mobile === 1,
+    phoneIsMobile: Number(r.phone_is_mobile) === 1,
     websiteRaw: r.website_raw,
     websiteType: r.website_type,
     websiteDomain: r.website_domain,
-    websiteNeedsReview: r.website_needs_review === 1,
+    websiteNeedsReview: Number(r.website_needs_review) === 1,
     mapsUrl: r.maps_url,
-    permanentlyClosed: r.permanently_closed === 1,
+    permanentlyClosed: Number(r.permanently_closed) === 1,
     status: r.status,
     customMessage: r.custom_message,
     createdAt: r.created_at,
@@ -97,31 +97,13 @@ function toLead(r: DbLead): LeadRow {
 
 // Grava a busca: cada lugar vira lead novo ou atualiza o existente (chave: placeId).
 // Status, histórico de contatos e created_at nunca são sobrescritos.
-export function ingestSearch(params: SearchParams, places: RawPlace[]): IngestResult {
-  const db = getDb();
+export async function ingestSearch(params: SearchParams, places: RawPlace[]): Promise<IngestResult> {
+  const db = await getDb();
   const now = new Date().toISOString();
   let added = 0;
   let updated = 0;
 
-  const findStmt = db.prepare('SELECT id FROM leads WHERE place_id = ?');
-  const insertStmt = db.prepare(`
-    INSERT INTO leads (
-      place_id, name, category, rating, reviews_count, address, city,
-      phone_raw, phone_wa, phone_is_mobile, website_raw, website_type,
-      website_domain, website_needs_review, maps_url, permanently_closed,
-      status, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo', ?, ?)
-  `);
-  const updateStmt = db.prepare(`
-    UPDATE leads SET
-      name = ?, category = ?, rating = ?, reviews_count = ?, address = ?, city = ?,
-      phone_raw = ?, phone_wa = ?, phone_is_mobile = ?, website_raw = ?, website_type = ?,
-      website_domain = ?, website_needs_review = ?, maps_url = ?, permanently_closed = ?,
-      updated_at = ?
-    WHERE place_id = ?
-  `);
-
-  db.exec('BEGIN');
+  const tx = await db.transaction('write');
   try {
     for (const p of places) {
       const cls = classifyWebsite(p.website);
@@ -147,24 +129,41 @@ export function ingestSearch(params: SearchParams, places: RawPlace[]): IngestRe
         p.permanentlyClosed ? 1 : 0,
       ];
 
-      const existing = findStmt.get(p.placeId);
-      if (existing) {
-        updateStmt.run(...values, now, p.placeId);
+      const existing = await tx.execute({ sql: 'SELECT id FROM leads WHERE place_id = ?', args: [p.placeId] });
+      if (existing.rows.length > 0) {
+        await tx.execute({
+          sql: `UPDATE leads SET
+            name = ?, category = ?, rating = ?, reviews_count = ?, address = ?, city = ?,
+            phone_raw = ?, phone_wa = ?, phone_is_mobile = ?, website_raw = ?, website_type = ?,
+            website_domain = ?, website_needs_review = ?, maps_url = ?, permanently_closed = ?,
+            updated_at = ?
+          WHERE place_id = ?`,
+          args: [...values, now, p.placeId],
+        });
         updated++;
       } else {
-        insertStmt.run(p.placeId, ...values, now, now);
+        await tx.execute({
+          sql: `INSERT INTO leads (
+            place_id, name, category, rating, reviews_count, address, city,
+            phone_raw, phone_wa, phone_is_mobile, website_raw, website_type,
+            website_domain, website_needs_review, maps_url, permanently_closed,
+            status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'novo', ?, ?)`,
+          args: [p.placeId, ...values, now, now],
+        });
         added++;
       }
     }
 
-    db.prepare(`
-      INSERT INTO searches (category, location, limit_requested, requested_at, results_total, results_new, results_updated)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(params.category, params.location, params.limit, now, places.length, added, updated);
+    await tx.execute({
+      sql: `INSERT INTO searches (category, location, limit_requested, requested_at, results_total, results_new, results_updated)
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      args: [params.category, params.location, params.limit, now, places.length, added, updated],
+    });
 
-    db.exec('COMMIT');
+    await tx.commit();
   } catch (err) {
-    db.exec('ROLLBACK');
+    await tx.rollback();
     throw err;
   }
 
@@ -174,7 +173,8 @@ export function ingestSearch(params: SearchParams, places: RawPlace[]): IngestRe
 // Ordem alfabética em português (acentos incluídos).
 const collator = new Intl.Collator('pt-BR', { sensitivity: 'base' });
 
-export function listLeads(filters: LeadFilters = {}): LeadRow[] {
+export async function listLeads(filters: LeadFilters = {}): Promise<LeadRow[]> {
+  const db = await getDb();
   const where: string[] = [];
   const args: string[] = [];
 
@@ -200,46 +200,56 @@ export function listLeads(filters: LeadFilters = {}): LeadRow[] {
   }
 
   const sql = `SELECT * FROM leads ${where.length ? `WHERE ${where.join(' AND ')}` : ''}`;
-  const rows = (getDb().prepare(sql).all(...args) as unknown as DbLead[]).map(toLead);
+  const res = await db.execute({ sql, args });
+  const rows = (res.rows as unknown as DbLead[]).map(toLead);
   return rows.sort((a, b) => collator.compare(a.name, b.name));
 }
 
 // Valores distintos para preencher os selects de filtro (categoria, cidade).
-export function listDistinct(column: 'category' | 'city'): string[] {
-  const rows = getDb()
-    .prepare(`SELECT DISTINCT ${column} AS v FROM leads WHERE ${column} IS NOT NULL AND ${column} <> '' `)
-    .all() as unknown as { v: string }[];
-  return rows.map((r) => r.v).sort((a, b) => collator.compare(a, b));
+export async function listDistinct(column: 'category' | 'city'): Promise<string[]> {
+  const db = await getDb();
+  const res = await db.execute(
+    `SELECT DISTINCT ${column} AS v FROM leads WHERE ${column} IS NOT NULL AND ${column} <> ''`,
+  );
+  return res.rows.map((r) => String(r.v)).sort((a, b) => collator.compare(a, b));
 }
 
 // Salva a mensagem editada. Texto vazio (ou null) volta ao modelo padrão.
-export function setLeadMessage(id: number, message: string | null): boolean {
+export async function setLeadMessage(id: number, message: string | null): Promise<boolean> {
+  const db = await getDb();
   const clean = message?.trim() ? message.trim() : null;
-  const res = getDb()
-    .prepare('UPDATE leads SET custom_message = ?, updated_at = ? WHERE id = ?')
-    .run(clean, new Date().toISOString(), id);
-  return Number(res.changes) > 0;
+  const res = await db.execute({
+    sql: 'UPDATE leads SET custom_message = ?, updated_at = ? WHERE id = ?',
+    args: [clean, new Date().toISOString(), id],
+  });
+  return res.rowsAffected > 0;
 }
 
-export function getLead(id: number): LeadRow | null {
-  const row = getDb().prepare('SELECT * FROM leads WHERE id = ?').get(id) as unknown as DbLead | undefined;
+export async function getLead(id: number): Promise<LeadRow | null> {
+  const db = await getDb();
+  const res = await db.execute({ sql: 'SELECT * FROM leads WHERE id = ?', args: [id] });
+  const row = res.rows[0] as unknown as DbLead | undefined;
   return row ? toLead(row) : null;
 }
 
-export function setLeadStatus(id: number, status: string): boolean {
+export async function setLeadStatus(id: number, status: string): Promise<boolean> {
   if (!(LEAD_STATUSES as readonly string[]).includes(status)) {
     throw new Error(`Status inválido: ${status}`);
   }
-  const res = getDb()
-    .prepare('UPDATE leads SET status = ?, updated_at = ? WHERE id = ?')
-    .run(status, new Date().toISOString(), id);
-  return Number(res.changes) > 0;
+  const db = await getDb();
+  const res = await db.execute({
+    sql: 'UPDATE leads SET status = ?, updated_at = ? WHERE id = ?',
+    args: [status, new Date().toISOString(), id],
+  });
+  return res.rowsAffected > 0;
 }
 
-export function registerContact(leadId: number, action: 'opened' | 'copied', templateId: string): void {
-  getDb()
-    .prepare('INSERT INTO contacts (lead_id, channel, template_id, action, created_at) VALUES (?, ?, ?, ?, ?)')
-    .run(leadId, 'whatsapp', templateId, action, new Date().toISOString());
+export async function registerContact(leadId: number, action: 'opened' | 'copied', templateId: string): Promise<void> {
+  const db = await getDb();
+  await db.execute({
+    sql: 'INSERT INTO contacts (lead_id, channel, template_id, action, created_at) VALUES (?, ?, ?, ?, ?)',
+    args: [leadId, 'whatsapp', templateId, action, new Date().toISOString()],
+  });
 }
 
 export function messageContextFromEnv(businessName: string): MessageContext {
